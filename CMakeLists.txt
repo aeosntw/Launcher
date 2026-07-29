@@ -186,6 +186,13 @@ else()
     set(Launcher_LAYOUT_REAL ${Launcher_LAYOUT})
 endif()
 
+# Allow explicit selection of macOS architectures for package builders / CI
+option(Launcher_BUILD_MAC_ARCHS "Architectures to build for macOS (e.g. x86_64;arm64). If empty, CMake default is used." "")
+if(APPLE AND NOT "${Launcher_BUILD_MAC_ARCHS}" STREQUAL "")
+    # Configure the CMake cache variable so it affects subsequent targets and packaging steps
+    set(CMAKE_OSX_ARCHITECTURES "${Launcher_BUILD_MAC_ARCHS}" CACHE STRING "Mac architectures to build for")
+endif()
+
 if(Launcher_LAYOUT_REAL STREQUAL "mac-bundle")
     set(BINARY_DEST_DIR "${Launcher_Name}.app/Contents/MacOS")
     set(LIBRARY_DEST_DIR "${Launcher_Name}.app/Contents/MacOS")
