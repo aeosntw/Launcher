@@ -99,7 +99,7 @@ jobs:
         if: steps.qt-cached.outputs.cache-hit != 'true'
         run: |
           mkdir C:/Users/runneradmin/AppData/Roaming/Qt/
-          curl https://gist.github.com/Neptune650/1086e0a3126be6a66580b71afcf8bd99/raw/797d8b90edf07ce88f265b38a573cc6b1fb45bfb/qtaccount.txt --output C:/Users/runneradmin/AppData/Roaming/Qt/qtaccount.ini
+          curl https://gist.github.com/Neptune650/1086e0a3126be6a66580b71afcf8bd99/raw/797d8b90edf07ce88f265b38a573cc6b1fb45bfb/qtaccount.txt --output C:/Users/runneradmin/AppData/Roaming/Qt/qtac[...]
 
       - name: Download Qt Installer
         if: steps.installer-cached.outputs.cache-hit != 'true' && steps.qt-cached.outputs.cache-hit != 'true'
@@ -107,7 +107,7 @@ jobs:
 
       - name: Download Qt non-Interactive Script
         if: steps.qt-cached.outputs.cache-hit != 'true'
-        run: curl https://gist.githubusercontent.com/Neptune650/aa6c051abc17e7d9d609add7f6dfd16a/raw/074dedb7525c0ffc010b39871615b008c2efbcd6/qt-installer-noninteractive.qs --output nonInteractive.qs
+        run: curl https://gist.githubusercontent.com/Neptune650/aa6c051abc17e7d9d609add7f6dfd16a/raw/074dedb7525c0ffc010b39871615b008c2efbcd6/qt-installer-noninteractive.qs --output nonInteractiv[...]
 
       - name: Install Qt
         if: steps.qt-cached.outputs.cache-hit != 'true'
@@ -259,7 +259,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX:PATH="$GITHUB_WORKSPACE/build/dist" \
             -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5)/lib/cmake" \
             -DQt5_DIR="$(brew --prefix qt@5)" \
-            -DLauncher_UPDATER_BASE=https://files.multimc.org/update/ \
+            -DLauncher_UPDATER_base=https://files.multimc.org/update/ \
             -DLauncher_PASTE_EE_API_KEY:STRING=utLvciUouSURFzfjPxLBf5W4ISsUX4pwBDF7N1AfZ \
             -DLauncher_ANALYTICS_ID:STRING=UA-87731965-2 \
             -DLauncher_LAYOUT=mac-bundle \
@@ -291,3 +291,95 @@ jobs:
         with:
           name: mmc-cracked-osx64
           path: build/dist
+
+  build-mac-arm64:
+    name: build-mac-arm64
+    runs-on: macos-14-arm64
+
+    steps:
+      - uses: actions/checkout@main
+        with:
+          submodules: 'recursive'
+
+      - name: Cache Dependencies
+        uses: actions/cache@main
+        with:
+          path: /Users/runner/Library/Caches/Homebrew
+          key: ${{ runner.os }}-deps-cache-arm64
+
+      - name: Install Dependencies
+        run: |
+          brew update
+          # Homebrew on Apple Silicon installs arm64 bottles by default
+          brew install qt@5 || true
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_C_COMPILER=/usr/bin/clang \
+            -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DLauncher_NOTIFICATION_URL:STRING=https://files.multimc.org/notifications.json \
+            -DCMAKE_INSTALL_PREFIX:PATH="$GITHUB_WORKSPACE/build/dist-arm64" \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5)/lib/cmake" \
+            -DQt5_DIR="$(brew --prefix qt@5)" \
+            -DLauncher_UPDATER_BASE=https://files.multimc.org/update/ \
+            -DLauncher_PASTE_EE_API_KEY:STRING=utLvciUouSURFzfjPxLBf5W4ISsUX4pwBDF7N1AfZ \
+            -DLauncher_ANALYTICS_ID:STRING=UA-87731965-2 \
+            -DLauncher_LAYOUT=mac-bundle \
+            -DLauncher_BUILD_PLATFORM=osx-arm64-5.15.2 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DLauncher_EMBED_SECRETS=On \
+            $GITHUB_WORKSPACE
+
+      - name: Compile
+        run: |
+          cd build
+          make -j$(sysctl -n hw.logicalcpu)
+
+      - name: Test
+        run: |
+          cd build
+          make test
+          cmake -E remove_directory "$GITHUB_WORKSPACE/build/dist-arm64"
+
+      - name: Install
+        run: |
+          cd build
+          make install
+          chmod +x "$GITHUB_WORKSPACE/build/dist-arm64/UltimMC.app/Contents/MacOS/UltimMC"
+
+      - name: Codesign
+        if: ${{ secrets.APPLE_NOTARIZE == 'true' }}
+        env:
+          SIGN_ID: ${{ secrets.APPLE_SIGNING_ID }}
+        run: |
+          codesign --deep --options runtime --sign "$SIGN_ID" "$GITHUB_WORKSPACE/build/dist-arm64/UltimMC.app"
+
+      - name: Notarize
+        if: ${{ secrets.APPLE_NOTARIZE == 'true' }}
+        env:
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_KEY_P8 }}
+        run: |
+          echo "$API_PRIVATE_KEY" > ~/notarykey.p8
+          xcrun notarytool submit "$GITHUB_WORKSPACE/build/dist-arm64/UltimMC.app" \
+            --key ~/notarykey.p8 --key-id "$KEY_ID" --issuer "$ISSUER_ID" --wait
+          xcrun stapler staple "$GITHUB_WORKSPACE/build/dist-arm64/UltimMC.app"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@main
+        with:
+          name: mmc-cracked-osx-arm64
+          path: build/dist-arm64
